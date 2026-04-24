@@ -6949,28 +6949,6 @@ window.monthlyCarbonData = {
                     }
                 }
 
-                // 尝试从云存储加载最新数据（管理员通过小程序同步的数据）
-                try {
-                    var cloudDataUrl = 'https://cloudbase-8gdof83j7fdc6094.cloud.tcb.tencent.com/qinling-carbon-data/web/carbonData2.json';
-                    var cloudResponse = await fetch(cloudDataUrl + '?t=' + Date.now());
-                    if (cloudResponse.ok) {
-                        var cloudData = await cloudResponse.json();
-                        // 合并云数据：云数据覆盖静态数据
-                        if (!monthlyCarbonData) monthlyCarbonData = {};
-                        for (var year in cloudData) {
-                            if (!monthlyCarbonData[year]) monthlyCarbonData[year] = {};
-                            for (var month in cloudData[year]) {
-                                monthlyCarbonData[year][month] = cloudData[year][month];
-                            }
-                        }
-                        console.log('云数据合并完成，年份: ' + Object.keys(monthlyCarbonData).length);
-                    } else {
-                        console.log('云数据不可用(HTTP ' + cloudResponse.status + ')，使用静态数据');
-                    }
-                } catch (cloudErr) {
-                    console.log('云数据加载跳过:', cloudErr.message);
-                }
-
                 if (!monthlyCarbonData || Object.keys(monthlyCarbonData).length === 0) {
                     throw new Error('无有效数据');
                 }
