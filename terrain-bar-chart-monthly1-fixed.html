@@ -458,10 +458,39 @@
     // 加载月度碳汇数据
     async function loadMonthlyCarbonData() {
         try {
+            // 先加载静态基础数据
             monthlyCarbonData = await fetch('carbonData2.json').then(function(r) { return r.json(); });
         } catch (error) {
             console.error('加载月度数据失败:', error);
             monthlyCarbonData = { "2022": { "1": { "宁陕县": 150, "丹凤县": 200, "柞水县": 180 } } };
+        }
+
+        // 尝试从云存储加载最新数据（管理员通过小程序同步的数据）
+        try {
+            var cloudDataUrl = 'https://cloudbase-8gdof83j7fdc6094.cloud.tcb.tencent.com/qinling-carbon-data/web/carbonData2.json';
+            var cloudData = await fetch(cloudDataUrl + '?t=' + Date.now()).then(function(r) { 
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json(); 
+            });
+            
+            // 合并云数据：云数据中非零的月份覆盖静态数据
+            for (var year in cloudData) {
+                if (!monthlyCarbonData[year]) monthlyCarbonData[year] = {};
+                for (var month in cloudData[year]) {
+                    var cloudValues = cloudData[year][month];
+                    var hasValidData = false;
+                    for (var name in cloudValues) {
+                        if (cloudValues[name] !== 0) { hasValidData = true; break; }
+                    }
+                    // 云数据有有效值时覆盖，或者静态数据不存在该月份时使用云数据
+                    if (hasValidData || !monthlyCarbonData[year][month]) {
+                        monthlyCarbonData[year][month] = cloudValues;
+                    }
+                }
+            }
+            console.log('云数据合并完成');
+        } catch (cloudErr) {
+            console.log('云数据加载跳过:', cloudErr.message);
         }
     }
 
