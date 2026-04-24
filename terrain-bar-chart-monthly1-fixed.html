@@ -67,6 +67,22 @@
             transition: all 0.3s;
         }
         .toggle-btn:hover { transform: scale(1.05); box-shadow: 0 0 12px rgba(0, 219, 222, 0.5); }
+        .toggle-btn.playing { background: linear-gradient(135deg, #ff6b6b, #ee5a24); }
+        .autoplay-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .speed-label { font-size: 0.75rem; opacity: 0.8; white-space: nowrap; }
+        .speed-select {
+            background: rgba(0, 0, 0, 0.3);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            min-width: 50px;
+        }
         .stats {
             display: flex;
             flex-wrap: wrap;
@@ -275,6 +291,16 @@
                 <select id="monthSelect"></select>
             </div>
             <button id="updateBtn" class="toggle-btn">更新图表</button>
+            <div class="autoplay-controls">
+                <button id="autoPlayBtn" class="toggle-btn">▶ 自动播放</button>
+                <label class="speed-label">速度:</label>
+                <select id="speedSelect" class="speed-select">
+                    <option value="2000">慢</option>
+                    <option value="1000" selected>中</option>
+                    <option value="500">快</option>
+                    <option value="250">极快</option>
+                </select>
+            </div>
         </div>
 
         <div class="stats">
@@ -583,6 +609,91 @@
         if (updateBtn) {
             updateBtn.addEventListener('click', function() {
                 if (currentChart) updateChartWithMonthlyData();
+            });
+        }
+    }
+
+    // ========== 自动播放 ==========
+    var autoPlayTimer = null;
+    var isAutoPlaying = false;
+
+    function getAllYearMonths() {
+        // 按时间顺序生成所有 有数据的年月列表
+        var list = [];
+        var years = Object.keys(monthlyCarbonData).sort();
+        years.forEach(function(y) {
+            var months = Object.keys(monthlyCarbonData[y]).sort(function(a, b) { return parseInt(a) - parseInt(b); });
+            months.forEach(function(m) {
+                list.push({ year: y, month: m });
+            });
+        });
+        return list;
+    }
+
+    function startAutoPlay() {
+        if (!currentChart) return;
+        var list = getAllYearMonths();
+        if (list.length === 0) return;
+
+        // 找到当前位置
+        var idx = -1;
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].year === currentYear && list[i].month === currentMonth) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx === -1) idx = 0;
+
+        isAutoPlaying = true;
+        var btn = document.getElementById('autoPlayBtn');
+        if (btn) { btn.textContent = '⏸ 暂停'; btn.classList.add('playing'); }
+
+        var speed = parseInt(document.getElementById('speedSelect').value) || 1000;
+
+        function tick() {
+            idx = (idx + 1) % list.length;
+            currentYear = list[idx].year;
+            currentMonth = list[idx].month;
+            // 更新选择器
+            var yearSel = document.getElementById('yearSelect');
+            if (yearSel) yearSel.value = currentYear;
+            populateMonthSelectors();
+            var monthSel = document.getElementById('monthSelect');
+            if (monthSel) monthSel.value = currentMonth;
+            // 更新图表（静默，不显示loading）
+            loadCurrentMonthData(currentChart);
+        }
+
+        autoPlayTimer = setInterval(tick, speed);
+    }
+
+    function stopAutoPlay() {
+        if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; }
+        isAutoPlaying = false;
+        var btn = document.getElementById('autoPlayBtn');
+        if (btn) { btn.textContent = '▶ 自动播放'; btn.classList.remove('playing'); }
+    }
+
+    function setupAutoPlayControls() {
+        var btn = document.getElementById('autoPlayBtn');
+        var speedSel = document.getElementById('speedSelect');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                if (isAutoPlaying) {
+                    stopAutoPlay();
+                } else {
+                    startAutoPlay();
+                }
+            });
+        }
+        // 切换速度时重新启动
+        if (speedSel) {
+            speedSel.addEventListener('change', function() {
+                if (isAutoPlaying) {
+                    stopAutoPlay();
+                    startAutoPlay();
+                }
             });
         }
     }
@@ -906,6 +1017,7 @@
         LoadProgress.init();
         setupRetryButton();
         setupControls();
+        setupAutoPlayControls();
         initMap();
     });
     </script>
