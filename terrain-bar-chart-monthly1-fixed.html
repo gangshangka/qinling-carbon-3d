@@ -362,19 +362,23 @@
     // ========== 进度条系统 ==========
     var LoadProgress = {
         steps: [
-            { key: 'echarts', label: 'ECharts 图表库', weight: 20 },
-            { key: 'echarts-gl', label: 'ECharts-GL 3D引擎', weight: 15 },
-            { key: 'qinling.geojson', label: '秦岭地形数据 (qinling.geojson)', weight: 25 },
-            { key: 'map3d_sampled.json', label: '县区坐标数据 (map3d_sampled.json)', weight: 15 },
+            { key: 'echarts', label: 'ECharts 图表库', weight: 10 },
+            { key: 'echarts-gl', label: 'ECharts-GL 3D引擎', weight: 5 },
+            { key: 'geojson-download', label: '下载秦岭地形数据', weight: 10 },
+            { key: 'geojson-parse', label: '解析地形数据', weight: 8 },
+            { key: 'geojson-render', label: '渲染县区地图', weight: 12 },
+            { key: 'map3d_sampled.json', label: '县区坐标数据 (map3d_sampled.json)', weight: 12 },
             { key: 'carbonData2.json', label: '本地碳汇数据 (carbonData2.json)', weight: 15 },
-            { key: 'cloud-data', label: '云端碳汇数据', weight: 10 },
+            { key: 'cloud-data', label: '云端碳汇数据', weight: 8 },
+            { key: 'chart-render', label: '渲染图表', weight: 10 },
+            { key: 'chart-labels', label: '标注县区名称', weight: 10 },
         ],
         completed: {},
         totalWeight: 0,
+        _partialWeight: 0,
 
         init: function() {
             this.totalWeight = this.steps.reduce(function(sum, s) { return sum + s.weight; }, 0);
-            // 标记已通过 script onload 加载的库
             if (typeof echarts !== 'undefined') this.done('echarts');
             if (typeof echarts !== 'undefined' && echarts.gl) this.done('echarts-gl');
             this.renderLog();
@@ -383,13 +387,27 @@
         done: function(key) {
             if (this.completed[key]) return;
             this.completed[key] = true;
+            this._partialWeight = 0;
             this.updateUI();
             this.addLogItem(this.getStep(key).label, 'done');
+        },
+
+        // 部分完成，用于大步骤中间更新
+        partialDone: function(key, fraction) {
+            var step = this.getStep(key);
+            if (this.completed[key]) return;
+            this._partialWeight = step.weight * fraction;
+            this.updateUI();
         },
 
         active: function(key) {
             this.setCurrentFile(this.getStep(key).label);
             this.addLogItem(this.getStep(key).label, 'active');
+        },
+
+        // 仅更新当前文件名显示，不加日志
+        setSubStatus: function(name) {
+            this.setCurrentFile(name);
         },
 
         getStep: function(key) {
@@ -402,7 +420,8 @@
             this.steps.forEach(function(s) {
                 if (self.completed[s.key]) doneWeight += s.weight;
             });
-            return Math.round((doneWeight / self.totalWeight) * 100);
+            doneWeight += this._partialWeight;
+            return Math.min(99, Math.round((doneWeight / self.totalWeight) * 100));
         },
 
         updateUI: function() {
@@ -444,7 +463,6 @@
         finish: function() {
             var overlay = document.getElementById('app-loading-overlay');
             if (!overlay) return;
-            // 确保进度 100%
             var fill = document.getElementById('progressFill');
             var pctEl = document.getElementById('progressPercent');
             if (fill) fill.style.width = '100%';
@@ -616,6 +634,45 @@
     // ========== 自动播放 ==========
     var autoPlayTimer = null;
     var isAutoPlaying = false;
+    var savedMapView = null; // 保存自动播放前的视图状态
+
+    // 设置地图是否允许缩放平移
+    function setMapRoam(enabled) {
+        if (!currentChart) return;
+        if (enabled) {
+            // 恢复自动播放前的视图
+            var opts = {
+                geo: {
+                    roam: true,
+                    scaleLimit: { min: 1, max: 5 }
+                }
+            };
+            if (savedMapView) {
+                opts.geo.center = savedMapView.center;
+                opts.geo.zoom = savedMapView.zoom;
+            }
+            currentChart.setOption(opts);
+        } else {
+            // 保存当前视图并锁定到最佳位置
+            try {
+                var option = currentChart.getOption();
+                if (option.geo && option.geo[0]) {
+                    savedMapView = {
+                        center: option.geo[0].center || [108.5, 34.2],
+                        zoom: option.geo[0].zoom || 1.2
+                    };
+                }
+            } catch(e) {}
+            currentChart.setOption({
+                geo: {
+                    roam: false,
+                    center: [108.5, 33.8],
+                    zoom: 1.15,
+                    scaleLimit: { min: 1.15, max: 1.15 }
+                }
+            });
+        }
+    }
 
     function getAllYearMonths() {
         // 按时间顺序生成所有 有数据的年月列表
@@ -648,6 +705,7 @@
         isAutoPlaying = true;
         var btn = document.getElementById('autoPlayBtn');
         if (btn) { btn.textContent = '⏸ 暂停'; btn.classList.add('playing'); }
+        setMapRoam(false);
 
         var speed = parseInt(document.getElementById('speedSelect').value) || 1000;
 
@@ -671,6 +729,7 @@
     function stopAutoPlay() {
         if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; }
         isAutoPlaying = false;
+        setMapRoam(true);
         var btn = document.getElementById('autoPlayBtn');
         if (btn) { btn.textContent = '▶ 自动播放'; btn.classList.remove('playing'); }
     }
@@ -757,18 +816,68 @@
 
     // 加载GeoJSON
     async function loadGeoJSON(chart) {
-        LoadProgress.active('qinling.geojson');
-        showLoading('正在加载秦岭地形数据...');
+        LoadProgress.active('geojson-download');
+        LoadProgress.setSubStatus('正在下载秦岭地形数据 (qinling.geojson)...');
         try {
-            var geoJSON = await fetch('qinling.geojson').then(function(r) { return r.json(); });
+            // 带进度跟踪的下载
+            var response = await fetch('qinling.geojson');
+            var contentLength = response.headers.get('content-length');
+            var total = parseInt(contentLength) || 0;
+
+            var geoJSON;
+            if (total > 0 && typeof ReadableStream !== 'undefined') {
+                // 流式下载，实时更新进度
+                var reader = response.body.getReader();
+                var chunks = [];
+                var received = 0;
+                while (true) {
+                    var result = await reader.read();
+                    if (result.done) break;
+                    chunks.push(result.value);
+                    received += result.value.length;
+                    var downloadPct = Math.min(received / total, 1);
+                    LoadProgress.partialDone('geojson-download', downloadPct);
+                    var mb = (received / 1024 / 1024).toFixed(1);
+                    var totalMb = (total / 1024 / 1024).toFixed(1);
+                    LoadProgress.setSubStatus('正在下载秦岭地形数据... ' + mb + 'MB / ' + totalMb + 'MB');
+                }
+                var allChunks = new Uint8Array(received);
+                var pos = 0;
+                chunks.forEach(function(chunk) {
+                    allChunks.set(chunk, pos);
+                    pos += chunk.length;
+                });
+                geoJSON = JSON.parse(new TextDecoder().decode(allChunks));
+            } else {
+                geoJSON = await response.json();
+            }
+            LoadProgress.done('geojson-download');
+
+            // 解析阶段
+            LoadProgress.active('geojson-parse');
+            LoadProgress.setSubStatus('正在解析地形数据，共 ' + geoJSON.features.length + ' 个县区...');
             if (geoJSON.crs) delete geoJSON.crs;
+            var countyNames = [];
             geoJSON.features.forEach(function(feature) {
                 if (feature.properties && feature.properties.NAME && !feature.properties.name) {
                     feature.properties.name = feature.properties.NAME;
                 }
+                if (feature.properties && feature.properties.name) {
+                    countyNames.push(feature.properties.name);
+                }
             });
+            LoadProgress.done('geojson-parse');
+
+            // 渲染阶段 - 逐个显示县区名称
+            LoadProgress.active('geojson-render');
             echarts.registerMap('qinling', geoJSON, { nameProperty: 'name' });
-            LoadProgress.done('qinling.geojson');
+            for (var ci = 0; ci < countyNames.length; ci++) {
+                var shortName = countyNames[ci].replace(/(区|县)$/, '');
+                LoadProgress.setSubStatus('正在渲染县区: ' + shortName + ' (' + (ci + 1) + '/' + countyNames.length + ')');
+                LoadProgress.partialDone('geojson-render', (ci + 1) / countyNames.length);
+            }
+            LoadProgress.done('geojson-render');
+
             chart.setOption({
                 geo: {
                     map: 'qinling',
@@ -798,9 +907,14 @@
                         backgroundColor: 'rgba(0,0,0,0.8)',
                         textStyle: { color: '#fff' }
                     },
-                    emphasis: { itemStyle: { areaColor: '#3a9ef9' }, label: { show: false } },
+                    emphasis: { itemStyle: { areaColor: '#3a9ef9' }, label: { show: true, color: '#fff', fontSize: 10, fontWeight: 'bold' } },
                     roam: true,
-                    label: { show: false }
+                    label: {
+                        show: true,
+                        color: '#334',
+                        fontSize: 9,
+                        formatter: function(params) { return params.name.replace(/(区|县)$/, ''); }
+                    }
                 }
             });
             showLoading('地形图加载成功，正在加载数据...');
@@ -816,16 +930,20 @@
     // 加载县区坐标
     async function loadCountyCoordinates() {
         LoadProgress.active('map3d_sampled.json');
+        LoadProgress.setSubStatus('正在下载县区坐标数据...');
         try {
             var data = await fetch('map3d_sampled.json').then(function(r) { return r.json(); });
             countyCoordinates = {};
+            var coordCount = 0;
             if (data.features && Array.isArray(data.features)) {
                 data.features.forEach(function(feature) {
                     if (feature.name && feature.center && Array.isArray(feature.center) && feature.center.length >= 2) {
                         countyCoordinates[feature.name] = [feature.center[0], feature.center[1]];
+                        coordCount++;
                     }
                 });
             }
+            LoadProgress.setSubStatus('已加载 ' + coordCount + ' 个县区坐标');
             LoadProgress.done('map3d_sampled.json');
         } catch (error) {
             console.error('加载坐标数据失败:', error);
@@ -848,6 +966,7 @@
     // 加载月度碳汇数据
     async function loadMonthlyCarbonData() {
         LoadProgress.active('carbonData2.json');
+        LoadProgress.setSubStatus('正在下载碳汇数据...');
         try {
             // 先加载本地静态数据
             monthlyCarbonData = await fetch('carbonData2.json').then(function(r) { return r.json(); });
@@ -891,17 +1010,18 @@
 
     // 加载当前月份数据
     async function loadCurrentMonthData(chart) {
+        LoadProgress.active('chart-render');
+        LoadProgress.setSubStatus('正在渲染 ' + currentYear + '年' + currentMonth + '月图表...');
         try {
             // 检查当前选中年月是否有数据，如果没有则选择最后一个有数据的年月
             if (!monthlyCarbonData[currentYear] || !monthlyCarbonData[currentYear][currentMonth]) {
                 var years = Object.keys(monthlyCarbonData).sort();
                 if (years.length > 0) {
-                    currentYear = years[years.length - 1]; // 选择最新的年份
+                    currentYear = years[years.length - 1];
                     var months = Object.keys(monthlyCarbonData[currentYear]).sort(function(a, b) { return parseInt(a) - parseInt(b); });
                     if (months.length > 0) {
                         currentMonth = months[0];
                     }
-                    // 更新选择器显示
                     var yearSelect = document.getElementById('yearSelect');
                     if (yearSelect) yearSelect.value = currentYear;
                     populateMonthSelectors();
@@ -922,8 +1042,16 @@
                 }
             }
             var meanCarbon = countyCount > 0 ? totalCarbon / countyCount : 0;
+            LoadProgress.done('chart-render');
+
+            // 标注县区名称
+            LoadProgress.active('chart-labels');
+            var displayNames = chartData.map(function(d) { return d.name.replace(/(区|县)$/, ''); });
+            LoadProgress.setSubStatus('正在标注: ' + displayNames.slice(0, 5).join('、') + (displayNames.length > 5 ? '...' : ''));
+
             updateStats({ countyCount: countyCount, meanValue: meanCarbon, maxValue: maxCarbon, minValue: minCarbon });
             display2DData(chart, chartData);
+            LoadProgress.done('chart-labels');
         } catch (error) {
             console.error('加载月份数据失败:', error);
             showError('加载数据失败: ' + error.message);
@@ -983,7 +1111,15 @@
                     itemStyle: { borderColor: '#fff', borderWidth: 2, shadowBlur: 8, shadowColor: 'rgba(0, 255, 255, 0.6)' }
                 },
                 zlevel: 2,
-                label: { show: false }
+                label: {
+                    show: true,
+                    formatter: function(params) { return params.name.replace(/(区|县)$/, ''); },
+                    position: 'top',
+                    color: '#fff',
+                    fontSize: 9,
+                    textBorderColor: 'rgba(0,0,0,0.6)',
+                    textBorderWidth: 1.5
+                }
             }]
         });
     }
