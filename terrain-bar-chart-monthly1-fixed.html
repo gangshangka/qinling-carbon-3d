@@ -6,8 +6,9 @@
     <meta http-equiv="Permissions-Policy" content="interest-cohort=()">
     <meta name="referrer" content="no-referrer-when-downgrade">
     <title>秦岭地形图与月度碳汇3D柱状图</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
+    <script>var __loadLog = [];</script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" onload="__loadLog.push('echarts.min.js ✓')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js" onload="__loadLog.push('echarts-gl.min.js ✓')"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -117,7 +118,8 @@
             text-align: center;
             line-height: 1.5;
         }
-        .loading-tip {
+        /* 全屏加载遮罩 */
+        #app-loading-overlay {
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
@@ -125,10 +127,94 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 1000;
+            background: linear-gradient(135deg, #0a1931, #1a3c79);
+            z-index: 9999;
+            transition: opacity 0.5s ease;
         }
-        .loading-text { color: #00dbde; font-size: 1rem; margin-top: 16px; }
+        #app-loading-overlay.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .loading-logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00dbde;
+            margin-bottom: 24px;
+            text-shadow: 0 0 20px rgba(0, 219, 222, 0.5);
+        }
+        .loading-progress-container {
+            width: 280px;
+            max-width: 80vw;
+            margin-bottom: 16px;
+        }
+        .loading-progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .loading-progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #00dbde, #fc00ff);
+            border-radius: 4px;
+            transition: width 0.4s ease;
+            position: relative;
+        }
+        .loading-progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .loading-percent {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #00dbde;
+            margin-bottom: 12px;
+        }
+        .loading-current-file {
+            text-align: center;
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.6);
+            min-height: 1.2em;
+            max-width: 280px;
+            word-break: break-all;
+        }
+        .loading-current-file .file-icon {
+            display: inline-block;
+            width: 6px; height: 6px;
+            background: #00dbde;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: blink 1s infinite;
+            vertical-align: middle;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .loading-log {
+            margin-top: 20px;
+            max-height: 120px;
+            overflow-y: auto;
+            width: 280px;
+            max-width: 80vw;
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.35);
+            line-height: 1.6;
+        }
+        .loading-log::-webkit-scrollbar { width: 3px; }
+        .loading-log::-webkit-scrollbar-thumb { background: rgba(0,219,222,0.3); border-radius: 2px; }
+        .loading-log .log-item.done { color: rgba(0, 219, 222, 0.5); }
+        .loading-log .log-item.active { color: rgba(255, 255, 255, 0.7); }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -157,6 +243,22 @@
     </style>
 </head>
 <body>
+    <!-- 全屏加载进度条遮罩 -->
+    <div id="app-loading-overlay">
+        <div class="loading-logo">🏔️ 秦岭碳汇数据平台</div>
+        <div class="loading-progress-container">
+            <div class="loading-progress-bar-bg">
+                <div class="loading-progress-bar-fill" id="progressFill"></div>
+            </div>
+        </div>
+        <div class="loading-percent" id="progressPercent">0%</div>
+        <div class="loading-current-file" id="currentFileName">
+            <span class="file-icon"></span>
+            <span id="currentFileText">正在初始化...</span>
+        </div>
+        <div class="loading-log" id="loadingLog"></div>
+    </div>
+
     <div class="container">
         <header>
             <h1>秦岭地形图与月度碳汇柱状图</h1>
@@ -211,7 +313,7 @@
 
         <div class="map-container">
             <div id="map">
-                <div id="loading" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #00dbde; font-size: 14px;">
+                <div id="loading" style="display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #00dbde; font-size: 14px;">
                     <div style="margin-bottom: 16px;">正在加载秦岭地形与碳汇数据...</div>
                     <div style="width: 40px; height: 40px; border: 4px solid rgba(0, 219, 222, 0.3); border-top: 4px solid #00dbde; border-radius: 50%; animation: spin 1s linear infinite;"></div>
                     <div id="loading-details" style="margin-top: 16px; font-size: 12px; opacity: 0.8;"></div>
@@ -231,6 +333,104 @@
     </div>
 
     <script>
+    // ========== 进度条系统 ==========
+    var LoadProgress = {
+        steps: [
+            { key: 'echarts', label: 'ECharts 图表库', weight: 20 },
+            { key: 'echarts-gl', label: 'ECharts-GL 3D引擎', weight: 15 },
+            { key: 'qinling.geojson', label: '秦岭地形数据 (qinling.geojson)', weight: 25 },
+            { key: 'map3d_sampled.json', label: '县区坐标数据 (map3d_sampled.json)', weight: 15 },
+            { key: 'carbonData2.json', label: '本地碳汇数据 (carbonData2.json)', weight: 15 },
+            { key: 'cloud-data', label: '云端碳汇数据', weight: 10 },
+        ],
+        completed: {},
+        totalWeight: 0,
+
+        init: function() {
+            this.totalWeight = this.steps.reduce(function(sum, s) { return sum + s.weight; }, 0);
+            // 标记已通过 script onload 加载的库
+            if (typeof echarts !== 'undefined') this.done('echarts');
+            if (typeof echarts !== 'undefined' && echarts.gl) this.done('echarts-gl');
+            this.renderLog();
+        },
+
+        done: function(key) {
+            if (this.completed[key]) return;
+            this.completed[key] = true;
+            this.updateUI();
+            this.addLogItem(this.getStep(key).label, 'done');
+        },
+
+        active: function(key) {
+            this.setCurrentFile(this.getStep(key).label);
+            this.addLogItem(this.getStep(key).label, 'active');
+        },
+
+        getStep: function(key) {
+            return this.steps.find(function(s) { return s.key === key; }) || { key: key, label: key, weight: 0 };
+        },
+
+        getPercent: function() {
+            var doneWeight = 0;
+            var self = this;
+            this.steps.forEach(function(s) {
+                if (self.completed[s.key]) doneWeight += s.weight;
+            });
+            return Math.round((doneWeight / self.totalWeight) * 100);
+        },
+
+        updateUI: function() {
+            var pct = this.getPercent();
+            var fill = document.getElementById('progressFill');
+            var pctEl = document.getElementById('progressPercent');
+            if (fill) fill.style.width = pct + '%';
+            if (pctEl) pctEl.textContent = pct + '%';
+        },
+
+        setCurrentFile: function(name) {
+            var el = document.getElementById('currentFileText');
+            if (el) el.textContent = name;
+        },
+
+        addLogItem: function(name, status) {
+            var logEl = document.getElementById('loadingLog');
+            if (!logEl) return;
+            var item = document.createElement('div');
+            item.className = 'log-item ' + status;
+            item.textContent = (status === 'done' ? '✓ ' : '⏳ ') + name;
+            logEl.appendChild(item);
+            logEl.scrollTop = logEl.scrollHeight;
+        },
+
+        renderLog: function() {
+            var logEl = document.getElementById('loadingLog');
+            if (!logEl) return;
+            logEl.innerHTML = '';
+            var self = this;
+            this.steps.forEach(function(s) {
+                var item = document.createElement('div');
+                item.className = 'log-item ' + (self.completed[s.key] ? 'done' : '');
+                item.textContent = (self.completed[s.key] ? '✓ ' : '○ ') + s.label;
+                logEl.appendChild(item);
+            });
+        },
+
+        finish: function() {
+            var overlay = document.getElementById('app-loading-overlay');
+            if (!overlay) return;
+            // 确保进度 100%
+            var fill = document.getElementById('progressFill');
+            var pctEl = document.getElementById('progressPercent');
+            if (fill) fill.style.width = '100%';
+            if (pctEl) pctEl.textContent = '100%';
+            this.setCurrentFile('加载完成！');
+            setTimeout(function() {
+                overlay.classList.add('fade-out');
+                setTimeout(function() { overlay.style.display = 'none'; }, 500);
+            }, 300);
+        }
+    };
+
     // 全局变量
     let currentChart = null;
     let countyCoordinates = {};
@@ -271,6 +471,7 @@
     function hideLoading() {
         const loadingEl = document.getElementById('loading');
         if (loadingEl) loadingEl.style.display = 'none';
+        LoadProgress.finish();
     }
 
     function showError(message) {
@@ -445,6 +646,7 @@
 
     // 加载GeoJSON
     async function loadGeoJSON(chart) {
+        LoadProgress.active('qinling.geojson');
         showLoading('正在加载秦岭地形数据...');
         try {
             var geoJSON = await fetch('qinling.geojson').then(function(r) { return r.json(); });
@@ -455,6 +657,7 @@
                 }
             });
             echarts.registerMap('qinling', geoJSON, { nameProperty: 'name' });
+            LoadProgress.done('qinling.geojson');
             chart.setOption({
                 geo: {
                     map: 'qinling',
@@ -501,6 +704,7 @@
 
     // 加载县区坐标
     async function loadCountyCoordinates() {
+        LoadProgress.active('map3d_sampled.json');
         try {
             var data = await fetch('map3d_sampled.json').then(function(r) { return r.json(); });
             countyCoordinates = {};
@@ -511,8 +715,10 @@
                     }
                 });
             }
+            LoadProgress.done('map3d_sampled.json');
         } catch (error) {
             console.error('加载坐标数据失败:', error);
+            LoadProgress.done('map3d_sampled.json');
             countyCoordinates = {
                 "宁陕县": [108.44010930177312, 33.53151179528448],
                 "丹凤县": [110.43133507960304, 33.67967447584821],
@@ -530,11 +736,14 @@
 
     // 加载月度碳汇数据
     async function loadMonthlyCarbonData() {
+        LoadProgress.active('carbonData2.json');
         try {
             // 先加载本地静态数据
             monthlyCarbonData = await fetch('carbonData2.json').then(function(r) { return r.json(); });
+            LoadProgress.done('carbonData2.json');
 
             // 再尝试从云存储加载最新数据并合并
+            LoadProgress.active('cloud-data');
             try {
                 var cloudDataUrl = 'https://cloudbase-8gdof83j7fdc6094.tcb.qcloud.la/qinling-carbon-data/web/carbonData2.json';
                 var cloudData = await fetch(cloudDataUrl + '?t=' + Date.now()).then(function(r) {
@@ -554,8 +763,10 @@
                     }
                     console.log('已合并云端数据，年份: ' + Object.keys(monthlyCarbonData).sort().join(', '));
                 }
+                LoadProgress.done('cloud-data');
             } catch (cloudErr) {
                 console.log('云端数据加载失败，使用本地数据:', cloudErr.message);
+                LoadProgress.done('cloud-data');
             }
 
             // 数据加载后动态生成年月选择器
@@ -692,6 +903,7 @@
 
     // 页面加载
     window.addEventListener('load', function() {
+        LoadProgress.init();
         setupRetryButton();
         setupControls();
         initMap();
