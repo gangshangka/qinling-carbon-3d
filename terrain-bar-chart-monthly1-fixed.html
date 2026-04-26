@@ -235,25 +235,6 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .btn-3d {
-            display: inline-block;
-            background: linear-gradient(135deg, #00dbde, #00b894);
-            color: #fff;
-            padding: 8px 22px;
-            border-radius: 20px;
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: bold;
-            letter-spacing: 1px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 16px rgba(0,219,222,0.3);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .btn-3d:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 24px rgba(0,219,222,0.5);
-            background: linear-gradient(135deg, #00f5f9, #00d2a0);
-        }
         @media (max-width: 480px) {
             .month-selector {
                 padding: 8px;
@@ -278,42 +259,6 @@
     </style>
 </head>
 <body>
-    <!-- 🔥 立即开始预加载 3D 热力图全部图片，后台静默缓存 -->
-    <script>
-    (function() {
-        var CDN = 'https://cdn.jsdelivr.net/gh/gangshangka/carbonweb@main/tif/';
-        var FILES = [];
-        for (var y = 2012; y <= 2022; y++) {
-            for (var m = 1; m <= 12; m++) {
-                FILES.push('color_nep' + y + (m < 10 ? '0' + m : '' + m) + '.png');
-            }
-        }
-        var TOTAL = FILES.length;
-        var idx = 0, loaded = 0;
-        var BATCH = 6;
-        function loadBatch() {
-            var end = Math.min(idx + BATCH, TOTAL);
-            for (var i = idx; i < end; i++) {
-                var img = new Image();
-                img.onload = function() { loaded++; };
-                img.onerror = function() { loaded++; };
-                img.src = CDN + FILES[i];
-            }
-            idx = end;
-            if (idx < TOTAL) setTimeout(loadBatch, 80);
-        }
-        function checkDone() {
-            if (loaded >= TOTAL) {
-                try { localStorage.setItem('carbonweb_loaded', Date.now().toString()); } catch(e) {}
-            } else {
-                setTimeout(checkDone, 2000);
-            }
-        }
-        loadBatch();
-        setTimeout(checkDone, 5000);
-    })();
-    </script>
-
     <!-- 全屏加载进度条遮罩 -->
     <div id="app-loading-overlay">
         <div class="loading-logo">🏔️ 秦岭碳汇数据平台</div>
@@ -334,9 +279,6 @@
         <header>
             <h1>秦岭地形图与月度碳汇柱状图</h1>
             <div class="subtitle">底图为秦岭地形轮廓，上层为各县区碳汇值柱状图，支持按年月切换数据</div>
-            <div style="margin-top:10px;">
-                <a href="https://gangshangka.github.io/carbonweb/" target="_blank" class="btn-3d" title="打开秦岭碳汇3D时空数据平台">🌍 打开3D碳汇视图</a>
-            </div>
         </header>
 
         <div class="month-selector">
@@ -965,13 +907,10 @@
                         backgroundColor: 'rgba(0,0,0,0.8)',
                         textStyle: { color: '#fff' }
                     },
-                    emphasis: { itemStyle: { areaColor: '#3a9ef9' }, label: { show: true, color: '#fff', fontSize: 10, fontWeight: 'bold' } },
+                    emphasis: { itemStyle: { areaColor: '#3a9ef9' }, label: { show: false } },
                     roam: true,
                     label: {
-                        show: true,
-                        color: '#334',
-                        fontSize: 9,
-                        formatter: function(params) { return params.name.replace(/(区|县)$/, ''); }
+                        show: false
                     }
                 }
             });
@@ -1127,17 +1066,23 @@
     function display2DData(chart, data) {
         var barData = data.map(function(item) { return { name: item.name, value: item.value }; });
         chart.setOption({
+            animation: true,
+            animationDuration: 900,
+            animationEasing: 'backOut',
+            animationDurationUpdate: 800,
+            animationEasingUpdate: 'cubicInOut',
             series: [{
                 type: 'scatter',
                 coordinateSystem: 'geo',
                 data: barData,
-                symbol: 'path://M0,0 L1,0 L1,1 L0,1 Z',
+                // 圆角柱状符号，简约美观
+                symbol: 'path://M0.1,0 L0.9,0 Q0.98,0 0.98,0.1 L0.98,0.88 Q0.98,1 0.9,1 L0.1,1 Q0.02,1 0.02,0.88 L0.02,0.1 Q0.02,0 0.1,0 Z',
                 symbolSize: function(val) {
-                    var h = Math.max(5, Math.min(40, Math.abs(val[2]) / 10));
-                    return [8, h];
+                    var h = Math.max(4, Math.min(42, Math.abs(val[2]) / 8));
+                    return [10, h];
                 },
                 symbolOffset: function(val) {
-                    var h = Math.max(5, Math.min(40, Math.abs(val[2]) / 10));
+                    var h = Math.max(4, Math.min(42, Math.abs(val[2]) / 8));
                     return [0, -h / 2];
                 },
                 itemStyle: {
@@ -1151,32 +1096,31 @@
                         return {
                             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
                             colorStops: [
-                                { offset: 0, color: lightenColor(baseColor, 30) },
-                                { offset: 0.7, color: baseColor },
-                                { offset: 1, color: darkenColor(baseColor, 30) }
+                                { offset: 0, color: lightenColor(baseColor, 20) },
+                                { offset: 0.55, color: baseColor },
+                                { offset: 1, color: darkenColor(baseColor, 20) }
                             ]
                         };
                     },
-                    opacity: 0.95,
-                    borderColor: '#ffffff',
+                    opacity: 0.93,
+                    borderColor: 'rgba(255,255,255,0.25)',
                     borderWidth: 0.5,
-                    shadowBlur: 6,
-                    shadowColor: 'rgba(0, 0, 0, 0.4)',
-                    shadowOffsetX: 1,
-                    shadowOffsetY: 2
+                    shadowBlur: 7,
+                    shadowColor: 'rgba(0, 0, 0, 0.5)',
+                    shadowOffsetX: 2,
+                    shadowOffsetY: 3
                 },
                 emphasis: {
-                    itemStyle: { borderColor: '#fff', borderWidth: 2, shadowBlur: 8, shadowColor: 'rgba(0, 255, 255, 0.6)' }
+                    itemStyle: {
+                        borderColor: '#fff',
+                        borderWidth: 2,
+                        shadowBlur: 10,
+                        shadowColor: 'rgba(0, 219, 222, 0.7)'
+                    }
                 },
                 zlevel: 2,
                 label: {
-                    show: true,
-                    formatter: function(params) { return params.name.replace(/(区|县)$/, ''); },
-                    position: 'top',
-                    color: '#fff',
-                    fontSize: 9,
-                    textBorderColor: 'rgba(0,0,0,0.6)',
-                    textBorderWidth: 1.5
+                    show: false
                 }
             }]
         });
