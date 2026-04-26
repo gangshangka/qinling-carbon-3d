@@ -235,6 +235,25 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .btn-3d {
+            display: inline-block;
+            background: linear-gradient(135deg, #00dbde, #00b894);
+            color: #fff;
+            padding: 8px 22px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0,219,222,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .btn-3d:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(0,219,222,0.5);
+            background: linear-gradient(135deg, #00f5f9, #00d2a0);
+        }
         @media (max-width: 480px) {
             .month-selector {
                 padding: 8px;
@@ -259,6 +278,42 @@
     </style>
 </head>
 <body>
+    <!-- 🔥 立即开始预加载 3D 热力图全部图片，后台静默缓存 -->
+    <script>
+    (function() {
+        var CDN = 'https://cdn.jsdelivr.net/gh/gangshangka/carbonweb@main/tif/';
+        var FILES = [];
+        for (var y = 2012; y <= 2022; y++) {
+            for (var m = 1; m <= 12; m++) {
+                FILES.push('color_nep' + y + (m < 10 ? '0' + m : '' + m) + '.png');
+            }
+        }
+        var TOTAL = FILES.length;
+        var idx = 0, loaded = 0;
+        var BATCH = 6;
+        function loadBatch() {
+            var end = Math.min(idx + BATCH, TOTAL);
+            for (var i = idx; i < end; i++) {
+                var img = new Image();
+                img.onload = function() { loaded++; };
+                img.onerror = function() { loaded++; };
+                img.src = CDN + FILES[i];
+            }
+            idx = end;
+            if (idx < TOTAL) setTimeout(loadBatch, 80);
+        }
+        function checkDone() {
+            if (loaded >= TOTAL) {
+                try { localStorage.setItem('carbonweb_loaded', Date.now().toString()); } catch(e) {}
+            } else {
+                setTimeout(checkDone, 2000);
+            }
+        }
+        loadBatch();
+        setTimeout(checkDone, 5000);
+    })();
+    </script>
+
     <!-- 全屏加载进度条遮罩 -->
     <div id="app-loading-overlay">
         <div class="loading-logo">🏔️ 秦岭碳汇数据平台</div>
@@ -279,6 +334,9 @@
         <header>
             <h1>秦岭地形图与月度碳汇柱状图</h1>
             <div class="subtitle">底图为秦岭地形轮廓，上层为各县区碳汇值柱状图，支持按年月切换数据</div>
+            <div style="margin-top:10px;">
+                <a href="https://gangshangka.github.io/carbonweb/" target="_blank" class="btn-3d" title="打开秦岭碳汇3D时空数据平台">🌍 打开3D碳汇视图</a>
+            </div>
         </header>
 
         <div class="month-selector">
