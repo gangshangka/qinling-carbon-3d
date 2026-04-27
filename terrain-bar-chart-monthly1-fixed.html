@@ -123,6 +123,44 @@
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        /* 3D地球跳转按钮 */
+        .nav-3d-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: linear-gradient(135deg, #1a6dd4, #00b4d8);
+            color: white; border: none; padding: 8px 18px;
+            border-radius: 20px; cursor: pointer; font-size: 0.85rem;
+            font-weight: bold; transition: all 0.3s;
+            box-shadow: 0 2px 10px rgba(0,180,216,0.3);
+            white-space: nowrap;
+        }
+        .nav-3d-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 18px rgba(0,180,216,0.5); }
+        .nav-3d-btn .icon { font-size: 1.1rem; }
+        /* 页面切换过渡遮罩 */
+        #nav-transition-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 99999; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #0a1931, #1a3c79);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+        #nav-transition-overlay.active { opacity: 1; pointer-events: all; }
+        .nav-trans-spinner {
+            width: 50px; height: 50px; border: 3px solid rgba(255,255,255,0.15);
+            border-top-color: #00b4d8; border-radius: 50%;
+            animation: nav-spin 0.8s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes nav-spin { to { transform: rotate(360deg); } }
+        .nav-trans-text { color: #fff; font-size: 1.1rem; letter-spacing: 1px; }
+        .nav-trans-sub { color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-top: 8px; }
+        .nav-trans-dots::after {
+            content: ''; animation: nav-dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes nav-dots {
+            0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; }
+            75% { content: '...'; } 100% { content: ''; }
+        }
         #map { width: 100%; height: 100%; }
         .info {
             margin-top: 10px;
@@ -279,6 +317,11 @@
         <header>
             <h1>秦岭地形图与月度碳汇柱状图</h1>
             <div class="subtitle">底图为秦岭地形轮廓，上层为各县区碳汇值柱状图，支持按年月切换数据</div>
+            <div style="margin-top:8px;">
+                <button class="nav-3d-btn" id="nav3dBtn">
+                    <span class="icon">🌍</span> 切换3D地球视图
+                </button>
+            </div>
         </header>
 
         <div class="month-selector">
@@ -1155,7 +1198,66 @@
         setupControls();
         setupAutoPlayControls();
         initMap();
+
+        // 3D地球切换按钮
+        var C3D_URL = 'https://gangshangka.github.io/carbonweb/qinling_raster.html';
+        var navOverlay = document.getElementById('nav-transition-overlay');
+        var navBtn = document.getElementById('nav3dBtn');
+        if (navBtn && navOverlay) {
+            navBtn.addEventListener('click', function() {
+                // 预加载目标页面的第一批关键图片，让切换后的加载更快
+                var preloadCount = 12;
+                var preloaded = 0;
+                var imgBase = 'https://gangshangka.github.io/carbonweb/tif/';
+                // 预加载 2012年6个月作为种子
+                for (var m = 7; m <= 12; m++) {
+                    (function(mm) {
+                        var img = new Image();
+                        img.onload = function() { preloaded++; };
+                        img.onerror = function() { preloaded++; };
+                        img.src = imgBase + 'color_nep2012' + (mm < 10 ? '0' + mm : mm) + '.png';
+                    })(m);
+                }
+                // 预加载 2013年1-6月
+                for (var m2 = 1; m2 <= 6; m2++) {
+                    (function(mm) {
+                        var img = new Image();
+                        img.onload = function() { preloaded++; };
+                        img.onerror = function() { preloaded++; };
+                        img.src = imgBase + 'color_nep2013' + (mm < 10 ? '0' + mm : mm) + '.png';
+                    })(m2);
+                }
+
+                // 显示过渡动画
+                navOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+
+                // 最小展示 2.2 秒过渡动画，给图片预加载和用户心理准备时间
+                var minDelay = 2200;
+                var startTime = Date.now();
+                var dots = navOverlay.querySelector('.nav-trans-dots');
+                var sub = navOverlay.querySelector('.nav-trans-sub');
+
+                var checkInterval = setInterval(function() {
+                    var elapsed = Date.now() - startTime;
+                    if (elapsed > 800 && preloaded < 12) {
+                        if (sub) sub.textContent = '热力图预加载中 (' + preloaded + '/12)...';
+                    }
+                    if (elapsed >= minDelay) {
+                        clearInterval(checkInterval);
+                        if (sub) sub.textContent = '即将进入3D地球...';
+                        setTimeout(function() { window.location.href = C3D_URL; }, 300);
+                    }
+                }, 200);
+            });
+        }
     });
     </script>
+    <!-- 页面切换过渡遮罩 -->
+    <div id="nav-transition-overlay">
+        <div class="nav-trans-spinner"></div>
+        <div class="nav-trans-text">正在加载3D地球<span class="nav-trans-dots"></span></div>
+        <div class="nav-trans-sub">地形数据加载中，请稍候</div>
+    </div>
 </body>
 </html>
