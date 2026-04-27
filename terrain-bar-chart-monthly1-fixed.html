@@ -6,6 +6,10 @@
     <meta http-equiv="Permissions-Policy" content="interest-cohort=()">
     <meta name="referrer" content="no-referrer-when-downgrade">
     <title>秦岭地形图与月度碳汇3D柱状图</title>
+    <!-- 预加载3D地球页面关键资源，加速切换 -->
+    <link rel="prefetch" href="https://gangshangka.github.io/carbonweb/qinling_raster.html" as="document">
+    <link rel="preconnect" href="https://registry.npmmirror.com">
+    <link rel="dns-prefetch" href="https://registry.npmmirror.com">
     <script>var __loadLog = [];</script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" onload="__loadLog.push('echarts.min.js ✓')"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js" onload="__loadLog.push('echarts-gl.min.js ✓')"></script>
@@ -1194,6 +1198,28 @@
     // 页面加载
     window.addEventListener('load', function() {
         LoadProgress.init();
+
+        // 后台预加载3D地球页面资源（Cesium.js + 首批热力图），加速切换
+        (function() {
+            var C3D_JS = 'https://registry.npmmirror.com/cesium/1.118.0/files/Build/Cesium/Cesium.js';
+            var IMG_BASE = 'https://gangshangka.github.io/carbonweb/tif/';
+            // 预加载 Cesium 核心 JS
+            var link = document.createElement('link');
+            link.rel = 'prefetch'; link.as = 'script'; link.href = C3D_JS;
+            document.head.appendChild(link);
+            // 延迟100ms开始预加载热力图，不阻塞页面初始化
+            setTimeout(function() {
+                for (var y = 2012; y <= 2013; y++) {
+                    for (var m = 1; m <= 12; m++) {
+                        (function(url) {
+                            var img = new Image();
+                            img.src = url;
+                        })(IMG_BASE + 'color_nep' + y + (m < 10 ? '0' + m : m) + '.png');
+                    }
+                }
+            }, 100);
+        })();
+
         setupRetryButton();
         setupControls();
         setupAutoPlayControls();
